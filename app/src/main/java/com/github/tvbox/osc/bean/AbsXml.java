@@ -11,6 +11,12 @@ import java.io.Serializable;
  */
 @XStreamAlias("rss")
 public class AbsXml implements Serializable {
+    public String sourceKey;
+    public String searchToken;
+
     @XStreamAlias("list")
     public Movie movie;
+
+    @XStreamAlias("msg")
+    public String msg;
 }

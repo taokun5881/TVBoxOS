@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.ui.adapter;
 
+import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.util.Log;
 import android.view.View;
@@ -20,11 +21,11 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
     private int selectedEpgIndex = -1;
     private int focusedEpgIndex = -1;
     public static float fontSize = 20;
-    private int defaultShiyiSelection = 0;
+    private final int defaultShiyiSelection = 0;
     private boolean ShiyiSelection = false;
     private String shiyiDate = null;
-    private String currentEpgDate = null;
-    private int focusSelection = -1;
+    private final String currentEpgDate = null;
+    private final int focusSelection = -1;
     private boolean source_include_back = false;
 
     SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd");
@@ -36,12 +37,16 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
         this.source_include_back = source_include_back;
     }
 
+    @SuppressLint("SetTextI18n")
     @Override
     protected void convert(BaseViewHolder holder, Epginfo value) {
         TextView textview = holder.getView(R.id.tv_epg_name);
         TextView timeview = holder.getView(R.id.tv_epg_time);
         TextView shiyi = holder.getView(R.id.shiyi);
         AudioWaveView wqddg_AudioWaveView = holder.getView(R.id.wqddg_AudioWaveView);
+        holder.itemView.setSelected(value.index == selectedEpgIndex || value.index == focusedEpgIndex);
+        textview.setSelected(true);
+        timeview.setSelected(true);
         wqddg_AudioWaveView.setVisibility(View.GONE);
         if (value.index == selectedEpgIndex && value.index != focusedEpgIndex && (value.currentEpgDate.equals(shiyiDate) || value.currentEpgDate.equals(timeFormat.format(new Date())))) {
             textview.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
@@ -61,17 +66,16 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
             shiyi.setTextColor(Color.WHITE);
             shiyi.setText("回看");
         } else if (new Date().compareTo(value.startdateTime) < 0) {
-            shiyi.setVisibility(View.VISIBLE);
-            shiyi.setBackgroundColor(Color.GRAY);
-            shiyi.setTextColor(Color.BLACK);
-            shiyi.setText("预约");
+            shiyi.setVisibility(View.GONE);
+//            shiyi.setBackgroundColor(Color.GRAY);
+//            shiyi.setTextColor(Color.BLACK);
+//            shiyi.setText("");
         } else {
             shiyi.setVisibility(View.GONE);
         }
         textview.setText(value.title);
         timeview.setText(value.start + "--" + value.end);
-        Log.e("roinlong", "getView: " + selectedEpgIndex);
-        if (ShiyiSelection == false) {
+        if (!ShiyiSelection) {
             Date now = new Date();
             if (now.compareTo(value.startdateTime) >= 0 && now.compareTo(value.enddateTime) <= 0) {
                 wqddg_AudioWaveView.setVisibility(View.VISIBLE);
@@ -112,8 +116,14 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
     }
 
     public void setSelectedEpgIndex(int selectedEpgIndex) {
-        if (selectedEpgIndex == this.selectedEpgIndex) return;
+        if (selectedEpgIndex == this.selectedEpgIndex) {
+            if (this.selectedEpgIndex != -1) notifyItemChanged(this.selectedEpgIndex);
+            return;
+        }
+        int preSelectedEpgIndex = this.selectedEpgIndex;
         this.selectedEpgIndex = selectedEpgIndex;
+        if (preSelectedEpgIndex != -1)
+            notifyItemChanged(preSelectedEpgIndex);
         if (this.selectedEpgIndex != -1)
             notifyItemChanged(this.selectedEpgIndex);
     }
@@ -125,7 +135,5 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
 
     public void setFocusedEpgIndex(int focusedEpgIndex) {
         this.focusedEpgIndex = focusedEpgIndex;
-        if (this.focusedEpgIndex != -1)
-            notifyItemChanged(this.focusedEpgIndex);
     }
 }

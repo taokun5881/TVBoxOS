@@ -2,18 +2,21 @@ package com.github.catvod.crawler;
 
 import android.content.Context;
 
-import com.github.tvbox.osc.util.OkGoHelper;
+import com.github.catvod.net.OkHttp;
 
 import org.json.JSONObject;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import okhttp3.Dns;
+import okhttp3.OkHttpClient;
 
-public abstract class Spider {
+public class Spider {
 
     public static JSONObject empty = new JSONObject();
+    public String siteKey;
 
     protected static Context mContext;
 
@@ -23,6 +26,9 @@ public abstract class Spider {
 
     public void init(Context context, String extend) {
         init(context);
+    }
+
+    public void initApi(SpiderApi api) {
     }
 
     /**
@@ -78,6 +84,10 @@ public abstract class Spider {
         return "";
     }
 
+    public String searchContent(String key, boolean quick, String pg) {
+        return searchContent(key, quick);
+    }
+
     /**
      * 播放信息
      *
@@ -108,7 +118,48 @@ public abstract class Spider {
         return false;
     }
 
+    /**
+     * 直播list
+     * @return
+     */
+    public String liveContent(String url) {
+        return "";
+    }
+
     public static Dns safeDns() {
-        return OkGoHelper.dnsOverHttps;
+        return OkHttp.dns();
+    }
+
+    public static OkHttpClient client() {
+        return OkHttp.client();
+    }
+
+    /**
+     * 取消请求tag
+     */
+    public void cancelByTag() {
+
+    }
+
+    /**
+     * 销毁
+     */
+    public void destroy() {}
+
+    /**
+     * 爬虫代理
+     * @param params
+     * @return
+     */
+    public Object[] proxyLocal(Map< String, String > params) {
+        return null;
+    }
+
+    public Object[] proxy(Map<String, String> params) {
+        return proxyLocal(params);
+    }
+
+    public String action(String action) {
+        return null;
     }
 }

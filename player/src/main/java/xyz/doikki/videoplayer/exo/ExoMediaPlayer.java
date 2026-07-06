@@ -2,18 +2,21 @@ package xyz.doikki.videoplayer.exo;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
+import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
+import androidx.annotation.NonNull;
+
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
-import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.LoadControl;
+import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.RenderersFactory;
 import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.analytics.AnalyticsCollector;
+import com.google.android.exoplayer2.analytics.DefaultAnalyticsCollector;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
@@ -24,11 +27,12 @@ import com.google.android.exoplayer2.util.Clock;
 import com.google.android.exoplayer2.util.EventLogger;
 import com.google.android.exoplayer2.video.VideoSize;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.VideoViewManager;
-
+import xyz.doikki.videoplayer.util.PlayerUtils;
 
 public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
@@ -43,7 +47,13 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     private LoadControl mLoadControl;
     private RenderersFactory mRenderersFactory;
-    private TrackSelector mTrackSelector;
+    protected TrackSelector mTrackSelector;
+
+    protected DefaultTrackSelector trackSelector;
+
+    protected String currentPlayPath;
+    protected Map<String, String> currentHeaders;
+    private boolean mRetriedAsHls;
 
     public ExoMediaPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -52,22 +62,31 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public void initPlayer() {
+        if (mLoadControl == null) {
+            mLoadControl = new DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(15_000, 30_000, 1_000, 3_000)
+                    .setTargetBufferBytes(32 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setBackBuffer(0, false)
+                    .build();
+        }
         mInternalPlayer = new SimpleExoPlayer.Builder(
                 mAppContext,
-                mRenderersFactory == null ? mRenderersFactory = new DefaultRenderersFactory(mAppContext) : mRenderersFactory,
+                mRenderersFactory == null ? mRenderersFactory = new DefaultRenderersFactory(mAppContext).setEnableDecoderFallback(true)  // 启用解码器回退，避免硬件加速问题
+                        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER) : mRenderersFactory,
                 mTrackSelector == null ? mTrackSelector = new DefaultTrackSelector(mAppContext) : mTrackSelector,
                 new DefaultMediaSourceFactory(mAppContext),
-                mLoadControl == null ? mLoadControl = new DefaultLoadControl() : mLoadControl,
+                mLoadControl,
                 DefaultBandwidthMeter.getSingletonInstance(mAppContext),
-                new AnalyticsCollector(Clock.DEFAULT))
+                new DefaultAnalyticsCollector(Clock.DEFAULT))
                 .build();
         setOptions();
 
-        //播放器日志
+        // 播放器日志（当开启日志且 mTrackSelector 为 MappingTrackSelector 时）
         if (VideoViewManager.getConfig().mIsEnableLog && mTrackSelector instanceof MappingTrackSelector) {
             mInternalPlayer.addAnalyticsListener(new EventLogger((MappingTrackSelector) mTrackSelector, "ExoPlayer"));
         }
-
+        if(trackSelector == null)trackSelector=(DefaultTrackSelector)mTrackSelector;
         mInternalPlayer.addListener(this);
     }
 
@@ -85,12 +104,16 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
-        mMediaSource = mMediaSourceHelper.getMediaSource(path, headers);
+        Log.i("Tvbox-runtime","echo-setDataSource:"+path);
+        currentPlayPath = path;
+        currentHeaders = copyHeaders(headers);
+        mRetriedAsHls = false;
+        mMediaSource = mMediaSourceHelper.getMediaSource(path, copyHeaders(currentHeaders));
     }
 
     @Override
     public void setDataSource(AssetFileDescriptor fd) {
-        //no support
+        // 不支持AssetFileDescriptor方式
     }
 
     @Override
@@ -134,6 +157,7 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
             mInternalPlayer.clearMediaItems();
             mInternalPlayer.setVideoSurface(null);
             mIsPreparing = false;
+            mRetriedAsHls = false;
         }
     }
 
@@ -167,7 +191,6 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
             mInternalPlayer.release();
             mInternalPlayer = null;
         }
-
         mIsPreparing = false;
         mSpeedPlaybackParameters = null;
     }
@@ -243,8 +266,7 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public long getTcpSpeed() {
-        // no support
-        return 0;
+        return PlayerUtils.getNetSpeed(mAppContext);
     }
 
     @Override
@@ -272,10 +294,44 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     }
 
     @Override
-    public void onPlayerError(ExoPlaybackException error) {
+    public void onPlayerError(PlaybackException error) {
+        Log.e("Tvbox-runtime", "echo-Exo player error: " + currentPlayPath, error);
+        if (retryAsHls(error)) {
+            return;
+        }
         if (mPlayerEventListener != null) {
             mPlayerEventListener.onError();
         }
+    }
+
+    private boolean retryAsHls(PlaybackException error) {
+        if (mRetriedAsHls || mInternalPlayer == null || currentPlayPath == null) {
+            return false;
+        }
+        if (!isParsingError(error)) {
+            return false;
+        }
+        mRetriedAsHls = true;
+        Log.i("Tvbox-runtime", "echo-Exo retry as HLS: " + currentPlayPath);
+        mMediaSource = mMediaSourceHelper.getHlsMediaSource(currentPlayPath, copyHeaders(currentHeaders));
+        mIsPreparing = true;
+        mInternalPlayer.setMediaSource(mMediaSource);
+        mInternalPlayer.prepare();
+        mInternalPlayer.setPlayWhenReady(true);
+        return true;
+    }
+
+    private boolean isParsingError(PlaybackException error) {
+        int errorCode = error.errorCode;
+        return errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED;
+    }
+
+    private Map<String, String> copyHeaders(Map<String, String> headers) {
+        return headers == null ? null : new HashMap<>(headers);
     }
 
     @Override

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel;
 import com.github.tvbox.osc.bean.Subtitle;
 import com.github.tvbox.osc.bean.SubtitleData;
 import com.github.tvbox.osc.ui.dialog.SearchSubtitleDialog;
+import com.github.tvbox.osc.util.OkGoHelper;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
 
@@ -74,6 +75,7 @@ public class SubtitleViewModel extends ViewModel {
             String searchApiUrl = "https://secure.assrt.net/sub/";
             OkGo.<String>get(searchApiUrl)
                     .params("searchword", title)
+                    .params("sort", "rank")
                     .params("page", page)
                     .params("no_redir", "1")
                     .execute(new AbsCallback<String>() {
@@ -82,7 +84,7 @@ public class SubtitleViewModel extends ViewModel {
                             try {
                                 String content = response.body();
                                 Document doc = Jsoup.parse(content);
-                                Elements items = doc.select(".resultcard .subitem a.introtitle");
+                                Elements items = doc.select(".resultcard .sublist_box_title a.introtitle");
                                 List<Subtitle> data = new ArrayList<>();
                                 for (Element item : items) {
                                     String title = item.attr("title");
@@ -199,13 +201,14 @@ public class SubtitleViewModel extends ViewModel {
                 .addHeader("Referer", "https://secure.assrt.net")
                 .addHeader("User-Agent", ua)
                 .build();
-        OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .readTimeout(15, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .retryOnConnectionFailure(true);
+        OkHttpClient base = OkGoHelper.getDefaultClient();
+        OkHttpClient.Builder builder = base != null ? base.newBuilder() : new OkHttpClient.Builder().proxySelector(OkGoHelper.proxySelector()).proxyAuthenticator(OkGoHelper.proxyAuthenticator());
+        builder.readTimeout(15, TimeUnit.SECONDS);
+        builder.writeTimeout(15, TimeUnit.SECONDS);
+        builder.connectTimeout(15, TimeUnit.SECONDS);
+        builder.followRedirects(false);
+        builder.followSslRedirects(false);
+        builder.retryOnConnectionFailure(true);
         OkHttpClient client = builder.build();
         client.newCall(request).enqueue(new Callback() {
             @Override

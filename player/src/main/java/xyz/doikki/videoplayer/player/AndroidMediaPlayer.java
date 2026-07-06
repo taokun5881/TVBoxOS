@@ -11,6 +11,9 @@ import android.view.SurfaceHolder;
 
 import java.util.Map;
 
+import xyz.doikki.videoplayer.exo.ExoMediaSourceHelper;
+import xyz.doikki.videoplayer.util.PlayerUtils;
+
 /**
  * 封装系统的MediaPlayer，不推荐，系统的MediaPlayer兼容性较差，建议使用IjkPlayer或者ExoPlayer
  */
@@ -44,6 +47,7 @@ public class AndroidMediaPlayer extends AbstractPlayer implements MediaPlayer.On
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
         try {
+            if (headers != null) headers.remove(ExoMediaSourceHelper.HEADER_FORMAT);
             mMediaPlayer.setDataSource(mAppContext, Uri.parse(path), headers);
         } catch (Exception e) {
             mPlayerEventListener.onError();
@@ -113,7 +117,7 @@ public class AndroidMediaPlayer extends AbstractPlayer implements MediaPlayer.On
     @Override
     public void seekTo(long time) {
         try {
-            mMediaPlayer.seekTo((int) time);
+            mMediaPlayer.seekTo(PlayerUtils.safeTimeMs(time));
         } catch (IllegalStateException e) {
             mPlayerEventListener.onError();
         }
@@ -216,8 +220,7 @@ public class AndroidMediaPlayer extends AbstractPlayer implements MediaPlayer.On
 
     @Override
     public long getTcpSpeed() {
-        // no support
-        return 0;
+        return PlayerUtils.getNetSpeed(mAppContext);        
     }
 
     @Override

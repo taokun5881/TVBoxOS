@@ -4,7 +4,7 @@ Thumbs.db
 .DS_Store
 # Built application files
 *.apk
-*.aar
+#*.aar
 *.ap_
 *.aab
 
@@ -95,3 +95,7 @@ lint/tmp/
 /LTDecodeNew3.exe
 
 .idea/
+
+*.hprof
+*.md
+output-metadata.json
